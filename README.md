@@ -116,7 +116,7 @@ You can then use the following path 'us-east1-docker.pkg.dev/mlops-494715/sentim
 LOCATION = 'us-east1'
 IMAGE = 'sentiment_app_model'
 PROJECT-ID = 'mlops-494715'
-REPOSITORY = 'sentiment-analysis-model'
+REPOSITORY = 'sentiment-analysis-model' #artifact repo
 
 First build a local image with a tag name (here latest). Then add a tag to push into the artifact registry repository. Tags are human-readable 
 aliases for the full image name ( eg. ab83c9ac75fd...).
@@ -217,7 +217,9 @@ Pro tip — use Workload Identity Federation instead of a JSON key for better se
 
 ```
 export PROJECT_ID=mlops-494715
-export REPO=your-github-username/your-repo-name   # e.g. jsmith/sentiment-api
+export REPO=your-github-username/your-repo-name   # e.g. bparment1/sentiment-analysis-model-app-cloud-run
+export YOUR_GITHUB_USERNAME
+export YOUR_REPO #github repo used 
 
 # 1. Enable required APIs
 gcloud services enable iamcredentials.googleapis.com \
@@ -229,15 +231,6 @@ gcloud services enable iamcredentials.googleapis.com \
 gcloud iam workload-identity-pools create "github-pool" \
   --location="global" \
   --display-name="GitHub Actions Pool" \
-  --project $PROJECT_ID
-
-# 3. Create a Provider inside the pool
-gcloud iam workload-identity-pools providers create-oidc "github-provider" \
-  --location="global" \
-  --workload-identity-pool="github-pool" \
-  --display-name="GitHub Provider" \
-  --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.actor=assertion.actor" \
-  --issuer-uri="https://token.actions.githubusercontent.com" \
   --project $PROJECT_ID
 
 # 4. Create the Service Account (if you haven't already)
@@ -258,7 +251,36 @@ gcloud projects add-iam-policy-binding $PROJECT_ID \
   --member="serviceAccount:github-actions-sa@$PROJECT_ID.iam.gserviceaccount.com" \
   --role="roles/iam.serviceAccountUser"
 
+# 3. Create a Provider inside the pool
+gcloud iam workload-identity-pools providers create-oidc "github-provider" \
+  --location="global" \
+  --workload-identity-pool="github-pool" \
+  --display-name="GitHub Provider" \
+  --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.actor=assertion.actor" \
+  --issuer-uri="https://token.actions.githubusercontent.com" \
+  --project $PROJECT_ID
+
+gcloud iam workload-identity-pools providers create-oidc "github-provider" \
+  --location="global" \
+  --workload-identity-pool="github-pool" \
+  --display-name="GitHub Provider" \
+  --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.actor=assertion.actor" \
+  --attribute-condition="assertion.repository=='YOUR_GITHUB_USERNAME/YOUR_REPO'" \
+  --issuer-uri="https://token.actions.githubusercontent.com" \
+  --project=$PROJECT_ID
+
+gcloud iam workload-identity-pools providers create-oidc "github-provider" \
+  --location="global" \
+  --workload-identity-pool="github-pool" \
+  --display-name="GitHub Provider" \
+  --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.actor=assertion.actor" \
+  --attribute-condition="assertion.repository=='bparment1/sentiment-analysis-model-app-cloud-run'" \
+  --issuer-uri="https://token.actions.githubusercontent.com" \
+  --project=$PROJECT_ID
+
 # 6. Allow GitHub Actions (for your specific repo) to impersonate the SA
+
+
 gcloud iam service-accounts add-iam-policy-binding \
   github-actions-sa@$PROJECT_ID.iam.gserviceaccount.com \
   --role="roles/iam.workloadIdentityUser" \
