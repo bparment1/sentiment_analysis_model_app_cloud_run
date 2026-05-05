@@ -278,8 +278,13 @@ gcloud iam workload-identity-pools providers create-oidc "github-provider" \
   --issuer-uri="https://token.actions.githubusercontent.com" \
   --project=$PROJECT_ID
 
-# 6. Allow GitHub Actions (for your specific repo) to impersonate the SA
+gcloud iam workload-identity-pools providers update-oidc "github-provider" \
+  --location="global" \
+  --workload-identity-pool="github-pool" \
+  --attribute-condition="assertion.repository=='bparment1/sentiment-analysis-model-app-cloud-run'" \
+  --project=$PROJECT_ID
 
+# 6. Allow GitHub Actions (for your specific repo) to impersonate the SA
 
 gcloud iam service-accounts add-iam-policy-binding \
   github-actions-sa@$PROJECT_ID.iam.gserviceaccount.com \
