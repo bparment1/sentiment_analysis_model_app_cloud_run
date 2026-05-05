@@ -281,7 +281,7 @@ gcloud iam workload-identity-pools providers create-oidc "github-provider" \
 gcloud iam workload-identity-pools providers update-oidc "github-provider" \
   --location="global" \
   --workload-identity-pool="github-pool" \
-  --attribute-condition="assertion.repository=='bparment1/sentiment-analysis-model-app-cloud-run'" \
+  --attribute-condition="assertion.repository=='bparment1/sentiment_analysis_model_app_cloud_run'" \
   --project=$PROJECT_ID
 
 # 6. Allow GitHub Actions (for your specific repo) to impersonate the SA
@@ -291,6 +291,12 @@ gcloud iam service-accounts add-iam-policy-binding \
   --role="roles/iam.workloadIdentityUser" \
   --member="principalSet://iam.googleapis.com/projects/$(gcloud projects describe $PROJECT_ID --format='value(projectNumber)')/locations/global/workloadIdentityPools/github-pool/attribute.repository/$REPO" \
   --project $PROJECT_ID
+
+gcloud iam workload-identity-pools providers update-oidc "github-provider" \
+  --location="global" \
+  --workload-identity-pool="github-pool" \
+  --attribute-condition="assertion.repository=='bparment1/sentiment_analysis_model_app_cloud_run'" \
+  --project=$PROJECT_ID
 
 # 7. Print the values you'll need for GitHub vars
 echo "WIF_PROVIDER:"
