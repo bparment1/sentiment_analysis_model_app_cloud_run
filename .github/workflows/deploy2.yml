@@ -1,0 +1,61 @@
+name: Build and Deploy to Cloud Run
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  PROJECT_ID: mlops-494715
+  REGION: us-east1
+  REPOSITORY: sentiment-analysis-model
+  SERVICE: sentiment-api
+  IMAGE: sentiment-api
+  RUNTIME_SERVICE_ACCOUNT: sentiment-api-sa@mlops-494715.iam.gserviceaccount.com
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write   # required for Workload Identity Federation
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 🔐 Authenticate to GCP (no secrets needed)
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/POOL_ID/providers/PROVIDER_ID
+          service_account: github-actions-sa@mlops-494715.iam.gserviceaccount.com
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: |
+          gcloud auth configure-docker $REGION-docker.pkg.dev
+
+      - name: Build Docker image
+        run: |
+          docker build -t $REGION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$IMAGE:${{ github.sha }} .
+
+      - name: Push Docker image
+        run: |
+          docker push $REGION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$IMAGE:${{ github.sha }}
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy $SERVICE \
+            --image=$REGION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$IMAGE:${{ github.sha }} \
+            --region=$REGION \
+            --platform=managed \
+            --allow-unauthenticated \
+            --min-instances=0 \
+            --max-instances=1 \
+            --concurrency=1 \
+            --memory=512Mi \
+            --service-account=$RUNTIME_SERVICE_ACCOUNT
