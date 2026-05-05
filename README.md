@@ -227,6 +227,11 @@ gcloud services enable iamcredentials.googleapis.com \
   sts.googleapis.com \
   --project $PROJECT_ID
 
+#2. create cloud run sa
+gcloud iam service-accounts create "cloud-run-sa" \
+  --project=$PROJECT_ID \
+  --display-name="Cloud Run Runtime SA"
+
 # 2. Create a Workload Identity Pool
 gcloud iam workload-identity-pools create "github-pool" \
   --location="global" \
@@ -292,11 +297,7 @@ gcloud iam service-accounts add-iam-policy-binding \
   --member="principalSet://iam.googleapis.com/projects/$(gcloud projects describe $PROJECT_ID --format='value(projectNumber)')/locations/global/workloadIdentityPools/github-pool/attribute.repository/$REPO" \
   --project $PROJECT_ID
 
-gcloud iam workload-identity-pools providers update-oidc "github-provider" \
-  --location="global" \
-  --workload-identity-pool="github-pool" \
-  --attribute-condition="assertion.repository=='bparment1/sentiment_analysis_model_app_cloud_run'" \
-  --project=$PROJECT_ID
+
 
 # 7. Print the values you'll need for GitHub vars
 echo "WIF_PROVIDER:"
@@ -308,4 +309,31 @@ gcloud iam workload-identity-pools providers describe github-provider \
 
 echo "WIF_SA:"
 echo "github-actions-sa@$PROJECT_ID.iam.gserviceaccount.com"
+
+
+
+#8 Add impersonification
+
+This is the exact error I mentioned earlier — github-actions-sa needs permission to act as cloud-run-sa when deploying. Run this:
+gcloud iam service-accounts add-iam-policy-binding \
+  cloud-run-sa@$PROJECT_ID.iam.gserviceaccount.com \
+  --member="serviceAccount:github-actions-sa@$PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/iam.serviceAccountUser" \
+  --project=$PROJECT_ID
+
+export REPO="bparment1/sentiment_analysis_model_app_cloud_run"
+
+I fixed this error
+
+gcloud iam workload-identity-pools providers update-oidc "github-provider" \
+  --location="global" \
+  --workload-identity-pool="github-pool" \
+  --attribute-condition="assertion.repository=='bparment1/sentiment_analysis_model_app_cloud_run'" \
+  --project=$PROJECT_ID
+
+gcloud iam service-accounts add-iam-policy-binding \
+  github-actions-sa@$PROJECT_ID.iam.gserviceaccount.com \
+  --role="roles/iam.workloadIdentityUser" \
+  --member="principalSet://iam.googleapis.com/projects/$(gcloud projects describe $PROJECT_ID --format='value(projectNumber)')/locations/global/workloadIdentityPools/github-pool/attribute.repository/$REPO" \
+  --project=$PROJECT_ID
 ```
