@@ -7,12 +7,12 @@ on:
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
   PROJECT_NUMBER: ${{ secrets.GCP_PROJECT_NUMBER }}
-  SERVICE_ACCOUNT: github-deploy-sa
+  SERVICE_ACCOUNT: github-actions-sa
   WIF_POOL: github-pool
   WIF_PROVIDER: github-provider
   REGION: us-east1
-  SERVICE_NAME: sentiment-api #name of the cloud run service
-  REPO: REGION-docker.pkg.dev/PROJECT_ID/sentiment-analysis-model #artifact registry repo
+  SERVICE_NAME: sentiment-api
+  ARTIFACT_REPO: sentiment-analysis-model  # ← just the repo name
   IMAGE_NAME: sentiment_app_model
 
 permissions:
@@ -42,13 +42,14 @@ jobs:
 
       - name: Build and push Docker image
         run: |
-          gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
-          docker build -t ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO }}/${{ env.IMAGE_NAME }}:${{ github.sha }} .
-          docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+            gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
+            docker build -t ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REPO }}/${{ env.IMAGE_NAME }}:${{ github.sha }} .
+            docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REPO }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
 
       - name: Deploy to Cloud Run
         run: |
-          gcloud run deploy ${{ env.SERVICE_NAME }} \
-            --image ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            gcloud run deploy ${{ env.SERVICE_NAME }} \
+            --image ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REPO }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
             --region ${{ env.REGION }} \
-            --platform managed
+            --platform managed \
+            --service-account=cloud-run-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com
