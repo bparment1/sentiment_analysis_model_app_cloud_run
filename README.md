@@ -1,6 +1,18 @@
 # Sentiment Analysis app
 
-This app provides a REST api to predict text sentiments.
+This builds a sentiment analysis app. User can send request via an REST API to predict sentiment of text. 
+
+It deploys a sentiment model leveraging a cloud based serverless cloud architecture. The following tools are used:
+
+- google cloud artifact registry (container registry)
+- google cloud cloud storage (bucket: data and model storage)
+- google cloud AIM (Access Identity Management): mangement role and 
+- google cloud run : serverless cloud compute autoscaling
+- github action for ci/cd
+- docker container
+
+
+# Call API
 
 To call the API, use the following json format:
 ```angular2html
@@ -10,17 +22,16 @@ body = {
 }
 ```
 
-
 Call with curl:
 
 ```angular2html
-curl -m 310 -X POST https://us-east1-mlops-494715.cloudfunctions.net/sentiment_analysis_model_app_cloud_fun \
+curl -m 310 -X POST https://ur_for_app/sentiment_analysis_model_app_cloud_fun \
 -H "Authorization: bearer $(gcloud auth print-identity-token)" \
 -H "Content-Type: application/json" \
 -d '{text: "The meal service was not very good and we didn't get water"}'
 ```
 
-## Test function
+# Test API locally when developing
 
 The Flask app can be locally tested using:
 
@@ -35,17 +46,37 @@ python main.py
 ```
 To see if the api is running you can use url = 'http://127.0.0.1:8000/ and you should see the following message:
 'Sentiment Analysis Model'.
+
 You can then run the rest_client.py script
 
-## Using docker
+# Setting up the cloud infrastructure
+
+Below we show how set up the cloud infrastructure to create an REST API service deploying a model that we previously trained. This involves setting up a cloud storage bucket to store model files (joblib, pickle or other) and data. We package the code into a container image stored on google artifact. We can then deploy the image using cloud run service.
+
+Set the following env variable in your terminal before running the commands:
+
+- PROJECT_ID: google project ID
+- REGION: region used in the project e.g. us-central1
+- IMAGE: container image for the app
+- REPOSITORY: location of the container registry stored in artifact registry
+- GITHUB_USERNAME: the user name for your github account
+- GITHUB_REPOSITORY: the github repo used in the ci/cd pipeline
+
+
+You can get the project ID this way:
+
+```
+gcloud config get-value project
+```
+
+# Build app container image with docker
 
 - authenticate first
 ```angular2html
 gcloud auth login --update-adc
 ```
 
-First, you need to make sure you have an image built fo the container. 
-Build de container this way:
+First, you need to make sure you have an image built for the container. I do this locally using docker. Follow the instructions below:
 
 ```
 docker build -t flask_app .
@@ -66,6 +97,8 @@ Once built we can bash inside a specific docker image by doing this:
 docker run -it flask_app bash
 ```
 
+To run the container locally with the app code, you need to pass env variables and the google cloud credentionsl
+
 ```angular2html
 docker run -it -p 8000:8000 flask_app
 
@@ -80,11 +113,11 @@ docker run -p 8000:8000 \
             flask_app:latest
 
 Bash inside of running container called 'serene_benz'
+
 docker exec -ti serene_benz bash
 
 
 ```
-
 #When using docker, check if it is running using
 http://localhost:8000/
 
@@ -99,59 +132,47 @@ https://medium.com/codex/how-to-store-docker-images-in-google-artifact-registry-
 
 gcloud artifacts repositories create sentiment-analysis-model \
     --repository-format=docker \
-    --location=us-east1 \
-    --project=mlops-494715 \
+    --location=$REGION \
+    --project=$PROJECT_ID \
     --description="api sentiment-analysis-model"
 ```
 Authenticate before pushing an image:
 ```angular2html
 gcloud auth configure-docker \
-    us-east1-docker.pkg.dev
+    $REGION-docker.pkg.dev
 ```
 Note that the full name of a artifact repo is the following:
-LOCATION-docker.pkg.dev/PROJECT-ID/REPOSITORY
+REGION-docker.pkg.dev/$PROJECT-ID/$REPOSITORY
 
-You can then use the following path 'us-east1-docker.pkg.dev/mlops-494715/sentiment-analysis-model'
-
-LOCATION = 'us-east1'
+REGION: the region used in the project and used for the registry to store the image
 IMAGE = 'sentiment_app_model'
-PROJECT-ID = 'mlops-494715'
-REPOSITORY = 'sentiment-analysis-model' #artifact repo
+PROJECT-ID = the project ID used for this app
+REPOSITORY = 'sentiment-analysis-model' #artifact registry repo
 
-First build a local image with a tag name (here latest). Then add a tag to push into the artifact registry repository. Tags are human-readable 
+First build a local image with a tag name (here latest). Then add a tag to push into the google artifact registry repository. Tags are human-readable 
 aliases for the full image name ( eg. ab83c9ac75fd...).
 
- The last step is to push 
-the image to the repo and list all image present in gcloud.
+The last step is to push the image to the repo and then list all images present in gcloud container registry.
 
 ```angular2html
 docker build --tag sentiment_app_model:latest .
-docker tag  sentiment_app_model:latest us-east1-docker.pkg.dev/mlops-494715/sentiment-analysis-model/sentiment_app_model:latest
-docker push us-east1-docker.pkg.dev/mlops-494715/sentiment-analysis-model/sentiment_app_model:latest
-gcloud artifacts docker images list us-east1-docker.pkg.dev/mlops-494715/sentiment-analysis-model --include-tags
+docker tag  sentiment_app_model:latest $REGION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/sentiment_app_model:latest
+docker push $REGION-docker.pkg.dev/$PROJECT_ID$/$REPOSITORY/sentiment_app_model:latest
+gcloud artifacts docker images list $REGION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY --include-tags
 ```
 https://docs.docker.com/engine/reference/commandline/tag/
 
 
+Let's now deploy the service using google cloud run. We need to indicate where the image is located in the artifact repo and configure the serverless compute. Note that we are able to scale down to zero. This means that the service will start only when the API is hit (a request comes in). We keep the resources low to lower (512Mi and one cpu) the cost.
+
 ```
 gcloud run deploy SERVICE --image \
-REPO-LOCATION-docker.pkg.dev/PROJECT-ID/IMAGE \
-[--platform managed --region RUN-REGION]
+REPO-LOCATION-docker.pkg.dev/$PROJECT-ID/$IMAGE \
+[--platform managed --region $REGION]
 
 gcloud run deploy sentiment-api \
-  --image=us-east1-docker.pkg.dev/mlops-494715/sentiment-analysis-model/sentiment_app_model:latest \
-  --region=us-east1 \
-  --platform=managed \
-  --allow-unauthenticated \
-  --min-instances=0 \
-  --max-instances=1 \
-  --concurrency=1 \
-  --memory=1Gi \
-  --cpu=1
-
-  gcloud run deploy sentiment-api \
-  --image=us-east1-docker.pkg.dev/mlops-494715/sentiment-analysis-model/sentiment_app_model:latest \
-  --region=us-east1 \
+  --image=$REGION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$IMAGE:latest \
+  --region=$REGION \
   --platform=managed \
   --allow-unauthenticated \
   --min-instances=0 \
@@ -161,9 +182,12 @@ gcloud run deploy sentiment-api \
   --cpu=1
 ```
 
+Note that port 8080 is required not 8000.
+
+You can check the service is running using the google cloud console GUI or send a request directly:
 
 ```
-curl -X POST https://sentiment-api-blablabla.us-east1.run.app/ \
+curl -X POST https://sentiment-api-blablabla.$REGION.run.app/ \
   -H "Content-Type: application/json" \
   -d '{"text": "The meal service was not very good and we didn'\''t get water"}'
 ```
@@ -176,74 +200,125 @@ TO DO
 - use uv instead of pip
 - Right now you load from a bucket every time. Don’t do that inside the request.
 
-Instead:
+# Access and service account for cloud run and github action
 
-Load once at startup
+We need to set up access and coordination among different google services. This will require several service accounts:
 
-- add multiple models
-- add mlflow tracking
-- use docker compose instead of other commands
+- cloud-run-sa: cloud run account with roles to access artifact registry and cloud storage.
+- github-actions-sa: used to manage access by github. 
 
+Since github is an external application/service, this is a bit more complex to setup. There are two options:
+- export github actions service account keys and store them as secret in the  github.
+- use workforce/workload identity federation to generate a temporay token to give github actions access to google cloud resources when uring the ci/cd pipeline. We show both ways but I opted for the Workload Identiy Federation since this is better practice and avoids cloud key leakage.
 
+Let's first create the github action service account:
 
+```
 gcloud iam service-accounts create github-actions-sa \
   --display-name="GitHub Actions SA"
+```
 
-# Grant required roles
+*** Enable required APIs to authenticate***
+
+
+**Let grant required roles for github service account**
+
+- Allows to deploy images in cloud run using github actions
+
+```
 gcloud projects add-iam-policy-binding $PROJECT_ID \
   --member="serviceAccount:github-actions-sa@$PROJECT_ID.iam.gserviceaccount.com" \
   --role="roles/run.admin"
+```
 
+- Allows to push container images to registry:
+
+```
 gcloud projects add-iam-policy-binding $PROJECT_ID \
   --member="serviceAccount:github-actions-sa@$PROJECT_ID.iam.gserviceaccount.com" \
   --role="roles/artifactregistry.writer"
+```
 
+- Allows the service account to act as / impersonate other service accounts. This is useful to use cloud run:
+
+```
 gcloud projects add-iam-policy-binding $PROJECT_ID \
   --member="serviceAccount:github-actions-sa@$PROJECT_ID.iam.gserviceaccount.com" \
   --role="roles/iam.serviceAccountUser"
+```
 
-# Export key
+**Export key for service account**
+
+We can export the json key for later usage or to store in the relevant github repo for the ci-cd pipleline.
+
+```
 gcloud iam service-accounts keys create key.json \
   --iam-account=github-actions-sa@$PROJECT_ID.iam.gserviceaccount.com
-2
+```
 
-3. Add secrets to GitHub
+Add secrets to GitHub
 Go to your repo → Settings → Secrets and variables → Actions and add:
 
 GCP_SA_KEY → paste contents of key.json
-GCP_PROJECT_ID → your GCP project ID (e.g. mlops-494715)
+GCP_PROJECT_ID → your GCP project ID (e.g. mlops-blabla)
 
-Pro tip — use Workload Identity Federation instead of a JSON key for better security. It avoids storing a long-lived credential in GitHub Secrets. Let me know if you want that version too.
+## **Using Workload Identity Federation instead of key**
+
+I use Workload Identity Federation instead of a JSON key for better security. It avoids storing a long-lived credential in GitHub Secrets.
+
+
+### 1. Let's enable the necessary apis/services from gcloud:
 
 ```
-export PROJECT_ID=mlops-494715
-export REPO=your-github-username/your-repo-name   # e.g. bparment1/sentiment-analysis-model-app-cloud-run
-export YOUR_GITHUB_USERNAME
-export YOUR_REPO #github repo used 
+gcloud services enable \
+iamcredentials.googleapis.com \
+cloudresourcemanager.googleapis.com \
+sts.googleapis.com \
+--project $PROJECT_ID
+```
 
-# 1. Enable required APIs
-gcloud services enable iamcredentials.googleapis.com \
-  cloudresourcemanager.googleapis.com \
-  sts.googleapis.com \
-  --project $PROJECT_ID
+Together, these three APIs are the foundation for keyless GitHub Actions authentication to GCP:
 
-#2. create cloud run sa
+GitHub OIDC token → STS (exchange) → short-lived GCP token → impersonate service account (IAM Credentials) → deploy
+
+- iamcredentials.googleapis.com — IAM Service Account Credentials API
+Allows generating short-lived credentials (tokens) for service accounts. This is the core API that powers Workload Identity Federation, which lets GitHub Actions authenticate to GCP without storing a long-lived JSON key file.
+
+- cloudresourcemanager.googleapis.com — Cloud Resource Manager API
+Allows querying and managing GCP project metadata and IAM policies. It's needed so tools (like GitHub Actions or gcloud) can read/validate project-level IAM bindings — including the ones set by the commands you showed earlier.
+
+- sts.googleapis.com — Security Token Service API
+Exchanges external credentials (like a GitHub OIDC token) for short-lived GCP tokens. This is the other half of Workload Identity Federation — GitHub presents its OIDC token to STS, which hands back a GCP-compatible token.
+
+### 2. create cloud run sa
+
+If not done before:
+
+```
 gcloud iam service-accounts create "cloud-run-sa" \
   --project=$PROJECT_ID \
   --display-name="Cloud Run Runtime SA"
+```
+### 3. Create a Workload Identity Pool
 
-# 2. Create a Workload Identity Pool
+```
 gcloud iam workload-identity-pools create "github-pool" \
   --location="global" \
   --display-name="GitHub Actions Pool" \
   --project $PROJECT_ID
+```
 
-# 4. Create the Service Account (if you haven't already)
+### 4. Create the Service Account (if you haven't already)
+
+```
 gcloud iam service-accounts create github-actions-sa \
   --display-name="GitHub Actions SA" \
   --project $PROJECT_ID
+```
 
-# 5. Grant the SA the roles it needs
+### 5. Grant the SA the roles it needs
+
+```
 gcloud projects add-iam-policy-binding $PROJECT_ID \
   --member="serviceAccount:github-actions-sa@$PROJECT_ID.iam.gserviceaccount.com" \
   --role="roles/run.admin"
@@ -255,52 +330,38 @@ gcloud projects add-iam-policy-binding $PROJECT_ID \
 gcloud projects add-iam-policy-binding $PROJECT_ID \
   --member="serviceAccount:github-actions-sa@$PROJECT_ID.iam.gserviceaccount.com" \
   --role="roles/iam.serviceAccountUser"
+```
 
-# 3. Create a Provider inside the pool
+### 6. Create a Provider inside the pool
+
+```
 gcloud iam workload-identity-pools providers create-oidc "github-provider" \
   --location="global" \
   --workload-identity-pool="github-pool" \
   --display-name="GitHub Provider" \
   --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.actor=assertion.actor" \
-  --issuer-uri="https://token.actions.githubusercontent.com" \
-  --project $PROJECT_ID
-
-gcloud iam workload-identity-pools providers create-oidc "github-provider" \
-  --location="global" \
-  --workload-identity-pool="github-pool" \
-  --display-name="GitHub Provider" \
-  --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.actor=assertion.actor" \
-  --attribute-condition="assertion.repository=='YOUR_GITHUB_USERNAME/YOUR_REPO'" \
+  --attribute-condition="assertion.repository==GITHUB_USERNAME/GITHUB_REPO" \
   --issuer-uri="https://token.actions.githubusercontent.com" \
   --project=$PROJECT_ID
+```
 
-gcloud iam workload-identity-pools providers create-oidc "github-provider" \
-  --location="global" \
-  --workload-identity-pool="github-pool" \
-  --display-name="GitHub Provider" \
-  --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.actor=assertion.actor" \
-  --attribute-condition="assertion.repository=='bparment1/sentiment-analysis-model-app-cloud-run'" \
-  --issuer-uri="https://token.actions.githubusercontent.com" \
-  --project=$PROJECT_ID
+### 7. Allow GitHub Actions (for your specific repo) to impersonate the SA
 
-gcloud iam workload-identity-pools providers update-oidc "github-provider" \
-  --location="global" \
-  --workload-identity-pool="github-pool" \
-  --attribute-condition="assertion.repository=='bparment1/sentiment_analysis_model_app_cloud_run'" \
-  --project=$PROJECT_ID
+Github-actions-sa needs permission to act as cloud-run-sa when deploying. Let's add this policy binding:
 
-# 6. Allow GitHub Actions (for your specific repo) to impersonate the SA
-
+```
 gcloud iam service-accounts add-iam-policy-binding \
   github-actions-sa@$PROJECT_ID.iam.gserviceaccount.com \
   --role="roles/iam.workloadIdentityUser" \
   --member="principalSet://iam.googleapis.com/projects/$(gcloud projects describe $PROJECT_ID --format='value(projectNumber)')/locations/global/workloadIdentityPools/github-pool/attribute.repository/$REPO" \
   --project $PROJECT_ID
+```
+  
+### 8. Print the values you'll need for GitHub vars
 
-
-
-# 7. Print the values you'll need for GitHub vars
+```
 echo "WIF_PROVIDER:"
+
 gcloud iam workload-identity-pools providers describe github-provider \
   --location="global" \
   --workload-identity-pool="github-pool" \
@@ -310,30 +371,8 @@ gcloud iam workload-identity-pools providers describe github-provider \
 echo "WIF_SA:"
 echo "github-actions-sa@$PROJECT_ID.iam.gserviceaccount.com"
 
-
-
-#8 Add impersonification
-
-This is the exact error I mentioned earlier — github-actions-sa needs permission to act as cloud-run-sa when deploying. Run this:
-gcloud iam service-accounts add-iam-policy-binding \
-  cloud-run-sa@$PROJECT_ID.iam.gserviceaccount.com \
-  --member="serviceAccount:github-actions-sa@$PROJECT_ID.iam.gserviceaccount.com" \
-  --role="roles/iam.serviceAccountUser" \
-  --project=$PROJECT_ID
-
-export REPO="bparment1/sentiment_analysis_model_app_cloud_run"
-
-I fixed this error
-
-gcloud iam workload-identity-pools providers update-oidc "github-provider" \
-  --location="global" \
-  --workload-identity-pool="github-pool" \
-  --attribute-condition="assertion.repository=='bparment1/sentiment_analysis_model_app_cloud_run'" \
-  --project=$PROJECT_ID
-
-gcloud iam service-accounts add-iam-policy-binding \
-  github-actions-sa@$PROJECT_ID.iam.gserviceaccount.com \
-  --role="roles/iam.workloadIdentityUser" \
-  --member="principalSet://iam.googleapis.com/projects/$(gcloud projects describe $PROJECT_ID --format='value(projectNumber)')/locations/global/workloadIdentityPools/github-pool/attribute.repository/$REPO" \
-  --project=$PROJECT_ID
 ```
+
+### 9. Run github ci-cd pipeline
+
+After setting up and configuring the permissions, you can now run the .yml containing the ci-cd githubactions pipeline.
