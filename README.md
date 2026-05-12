@@ -25,11 +25,12 @@ body = {
 Call with curl:
 
 ```angular2html
-curl -m 310 -X POST https://ur_for_app/sentiment_analysis_model_app_cloud_fun \
--H "Authorization: bearer $(gcloud auth print-identity-token)" \
+curl -m 310 -X POST https://url_for_app/sentiment_analysis_model_app_cloud_run/predict \
+-H "Authorization: Bearer $(gcloud auth print-identity-token)" \ \
 -H "Content-Type: application/json" \
 -d '{text: "The meal service was not very good and we didn't get water"}'
 ```
+
 
 # Test API locally when developing
 

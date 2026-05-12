@@ -4,9 +4,11 @@ import processing.processing as processing
 app = Flask(__name__) # creates an instance of a Flask app
 port = 8000
 
+#needs to be set in env var
 bucket_name = 'sentiment_analysis_model_app2'
 project_name = 'mlops-494715' #this is the project ID
 
+#landing health check
 @app.route('/', methods=['GET'])
 def index():
     return 'Welcome to the Sentiment Analysis Model app'

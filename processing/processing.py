@@ -1,58 +1,3 @@
-
-'''
-def clean_text(data):
-    # download the necessary files
-    nltk.download('punkt')
-    nltk.download('wordnet')
-    nltk.download('stopwords')
-
-    # 1. Removing URLS
-    data = re.sub('http\S+', '', data).strip()
-    data = re.sub('www\S+', '', data).strip()
-
-    # 2. Removing Tags
-    data = re.sub('#\S+', '', data).strip()
-
-    # 3. Removing Mentions
-    data = re.sub('@\S+', '', data).strip()
-
-    # 4. Removing upper brackets to keep negative auxiliary verbs in text
-    data = data.replace("'", "")
-
-    # 5. Tokenize
-    text_tokens = word_tokenize(data.lower())
-
-    # 6. Remove Puncs and number
-    tokens_without_punc = [w for w in text_tokens if w.isalpha()]
-
-    # 7. Removing Stopwords
-    stop_words = stopwords.words('english')
-    for i in ["not", "no"]:
-        stop_words.remove(i)
-    tokens_without_sw = [t for t in tokens_without_punc if t not in stop_words]
-
-    # 8. lemma
-    text_cleaned = [WordNetLemmatizer().lemmatize(t) for t in tokens_without_sw]
-
-    # joining
-    return " ".join(text_cleaned)
-
-
-def model_inference(sample):
-    #assuming we have pickle objects in the models directory
-    # Loading model to compare the results
-    model = pickle.load(open('./models/model_rf.pkl', 'rb'))
-    tfidf_vectorizer = pickle.load(open('./models/tfidf_vectorizer.pkl', 'rb'))
-
-    sample_cleaned = clean_text(sample)
-    #sample_cleaned = sample
-    sample_vectorized = tfidf_vectorizer.transform([sample_cleaned])
-    y_pred = model.predict(sample_vectorized)
-
-    return y_pred
-
-'''
-
 import pickle
 import re
 import nltk
@@ -81,16 +26,16 @@ class TextCleaner:
         self.lemmatizer = WordNetLemmatizer()
 
     def clean_single(self, text):
-        text = re.sub(r'http\S+', '', text).strip()
-        text = re.sub(r'www\S+', '', text).strip()
-        text = re.sub(r'#\S+', '', text).strip()
-        text = re.sub(r'@\S+', '', text).strip()
-        text = text.replace("'", "")
+        text = re.sub(r'http\S+', '', text).strip() # removes URLs:"check http://example.com" → "check"
+        text = re.sub(r'www\S+', '', text).strip() # removes www links: "visit www.site.com" → "visit"
+        text = re.sub(r'#\S+', '', text).strip() # removes hashtags:  "#great movie" → "movie"
+        text = re.sub(r'@\S+', '', text).strip() # removes mentions:  "@user loved it" → "loved it"
+        text = text.replace("'", "") # removes apostrophes: "didn't" → "didnt"
 
-        tokens = word_tokenize(text.lower())
-        tokens = [w for w in tokens if w.isalpha()]
-        tokens = [t for t in tokens if t not in self.stop_words]
-        tokens = [self.lemmatizer.lemmatize(t) for t in tokens]
+        tokens = word_tokenize(text.lower()) # splits into tokens: "Great Movie" → ["great", "movie"]
+        tokens = [w for w in tokens if w.isalpha()] # removes numbers/punctuation
+        tokens = [t for t in tokens if t not in self.stop_words] # removes English stopwords: "the", "is", "at"
+        tokens = [self.lemmatizer.lemmatize(t) for t in tokens] # "movies" → "movie", "loved" → "love"
 
         return " ".join(tokens)
 
@@ -99,28 +44,7 @@ class TextCleaner:
           data = pd.Series(data)
         return data.apply(self.clean_single)
 
-'''
-def model_inference(sample):
-    #assuming we have pickle objects in the models directory
-    # Loading model to compare the results
-    model = pickle.load(open('./models/model_rf.pkl', 'rb'))
-    tfidf_vectorizer = pickle.load(open('./models/tfidf_vectorizer.pkl', 'rb'))
-
-    sample_cleaned = clean_text(sample)
-    #sample_cleaned = sample
-    sample_vectorized = tfidf_vectorizer.transform([sample_cleaned])
-    y_pred = model.predict(sample_vectorized)
-
-    return y_pred
-'''
-
-'''
-def model_inference(sample):
-    pipe = joblib.load('./models/pipeline.joblib')
-    y_pred = pipe.predict([sample])
-    return y_pred
-'''
-
+# Currently: downloads model from GCS on EVERY API call → slow! We need to rewrite this.
 
 def model_inference(sample,bucket_name,project_name):
     #assuming we have pickle objects in the models directory in GCP bucket
